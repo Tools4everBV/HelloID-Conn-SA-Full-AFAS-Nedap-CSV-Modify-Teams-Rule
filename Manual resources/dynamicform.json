@@ -1,0 +1,121 @@
+[
+    {
+        "label":  "Details",
+        "fields":  [
+                       {
+                           "key":  "teamsMappings",
+                           "templateOptions":  {
+                                                   "label":  "Teams mappings",
+                                                   "required":  false,
+                                                   "grid":  {
+                                                                "columns":  [
+                                                                                {
+                                                                                    "headerName":  "AFASO Eid",
+                                                                                    "field":  "AFASOEid"
+                                                                                },
+                                                                                {
+                                                                                    "headerName":  "AFASOE",
+                                                                                    "field":  "AFASOE"
+                                                                                },
+                                                                                {
+                                                                                    "headerName":  "Function Id",
+                                                                                    "field":  "FunctionId"
+                                                                                },
+                                                                                {
+                                                                                    "headerName":  "Functions",
+                                                                                    "field":  "Functions"
+                                                                                },
+                                                                                {
+                                                                                    "headerName":  "Nedap Team Ids",
+                                                                                    "field":  "NedapTeamIds"
+                                                                                },
+                                                                                {
+                                                                                    "headerName":  "Nedap Teams",
+                                                                                    "field":  "NedapTeams"
+                                                                                }
+                                                                            ],
+                                                                "height":  300,
+                                                                "rowSelection":  "single"
+                                                            },
+                                                   "dataSourceConfig":  {
+                                                                            "dataSourceGuid":  "$dataSourceGuid_0",
+                                                                            "input":  {
+                                                                                          "propertyInputs":  [
+
+                                                                                                             ]
+                                                                                      }
+                                                                        },
+                                                   "useFilter":  true,
+                                                   "useDefault":  false
+                                               },
+                           "type":  "grid",
+                           "summaryVisibility":  "Show",
+                           "requiresTemplateOptions":  true,
+                           "requiresKey":  true,
+                           "requiresDataSource":  true
+                       }
+                   ]
+    },
+    {
+        "label":  "Nedap Teams",
+        "fields":  [
+                       {
+                           "key":  "dualList",
+                           "templateOptions":  {
+                                                   "label":  "Nedap Teams",
+                                                   "required":  false,
+                                                   "filterable":  false,
+                                                   "useDataSource":  true,
+                                                   "dualList":  {
+                                                                    "options":  [
+                                                                                    {
+                                                                                        "guid":  "75ea2890-88f8-4851-b202-626123054e14",
+                                                                                        "Name":  "Apple"
+                                                                                    },
+                                                                                    {
+                                                                                        "guid":  "0607270d-83e2-4574-9894-0b70011b663f",
+                                                                                        "Name":  "Pear"
+                                                                                    },
+                                                                                    {
+                                                                                        "guid":  "1ef6fe01-3095-4614-a6db-7c8cd416ae3b",
+                                                                                        "Name":  "Orange"
+                                                                                    }
+                                                                                ],
+                                                                    "optionKeyProperty":  "Id",
+                                                                    "optionDisplayProperty":  "DisplayName",
+                                                                    "labelLeft":  "Available",
+                                                                    "labelRight":  "Mapped"
+                                                                },
+                                                   "destinationDataSourceConfig":  {
+                                                                                       "dataSourceGuid":  "$dataSourceGuid_1",
+                                                                                       "input":  {
+                                                                                                     "propertyInputs":  [
+                                                                                                                            {
+                                                                                                                                "propertyName":  "selectedMapping",
+                                                                                                                                "otherFieldValue":  {
+                                                                                                                                                        "otherFieldKey":  "teamsMappings"
+                                                                                                                                                    }
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                 }
+                                                                                   },
+                                                   "dataSourceConfig":  {
+                                                                            "dataSourceGuid":  "$dataSourceGuid_2",
+                                                                            "input":  {
+                                                                                          "propertyInputs":  [
+
+                                                                                                             ]
+                                                                                      }
+                                                                        }
+                                               },
+                           "type":  "duallist",
+                           "summaryVisibility":  "Show",
+                           "sourceDataSourceIdentifierSuffix":  "source-datasource",
+                           "destinationDataSourceIdentifierSuffix":  "destination-datasource",
+                           "requiresTemplateOptions":  true,
+                           "requiresKey":  true,
+                           "requiresDataSource":  false
+                       }
+                   ]
+    }
+]
