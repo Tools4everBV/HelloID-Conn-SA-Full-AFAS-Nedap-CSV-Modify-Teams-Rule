@@ -31,13 +31,13 @@ function Get-AFASConnectorData {
 
         foreach ($record in $dataset.rows) { [void]$data.Value.add($record) }
 
-        $skip += 100
-        while ($dataset.rows.count -ne 0) {
+        $skip += $take
+        while (@($dataset.rows).count -eq $take) {
             $uri = $BaseUri + "/connectors/" + $Connector + "?skip=$skip&take=$take"
 
             $dataset = Invoke-RestMethod -Method Get -Uri $uri -Headers $Headers -UseBasicParsing
 
-            $skip += 100
+            $skip += $take
 
             foreach ($record in $dataset.rows) { [void]$data.Value.add($record) }
         }
@@ -57,19 +57,13 @@ $employments = New-Object System.Collections.ArrayList
 Get-AFASConnectorData -Token $token -BaseUri $baseUri -Connector "T4E_HelloID_Employments" ([ref]$employments)
 $employments = $employments | Select-Object Functie_code, Functie_omschrijving #| Group-Object Persoonsnummer -AsHashTable
 
-if($true -eq $includePositions)
-{
+if ($true -eq $includePositions) {
     $positions = New-Object System.Collections.ArrayList
     Get-AFASConnectorData -Token $token -BaseUri $baseUri -Connector "T4E_HelloID_Positions" ([ref]$positions)
     $positions = $positions | Select-Object Functie_code, Functie_omschrijving #| Group-Object Persoonsnummer -AsHashTable
+
+    $employments += $positions
 }
-
-    if($true -eq $includePositions)
-    {
-        $employments += $positions
-    }
-    
-
 
 $afasEmployments = $employments | Sort-Object Functie_Code -Unique 
 
@@ -126,10 +120,12 @@ function Get-NedapTeamList {
         $response = Invoke-WebRequest @webRequestSplatting
         $teams = $response.Content | ConvertFrom-Json
         Write-Output  $teams.teams
-    } catch {
+    }
+    catch {
         if ($_.ErrorDetails) {
             $errorReponse = $_.ErrorDetails
-        } elseif ($_.Exception.Response) {
+        }
+        elseif ($_.Exception.Response) {
             $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
             $errorReponse = $reader.ReadToEnd()
             $reader.Dispose()
@@ -140,17 +136,17 @@ function Get-NedapTeamList {
 Import-NedapCertificate -CertificatePath $script:CertificatePath  -CertificatePassword $script:CertificatePassword
 
 
-$joinedAfasDataset =@()
-foreach($rowA in $rules) {
+$joinedAfasDataset = @()
+foreach ($rowA in $rules) {
     $rowB = $afasLocations | Where-Object ExternalId -eq $rowA.'Department.ExternalId'
     $rowC = $afasEmployments | Where-Object Functie_code -eq $rowA.'Title.ExternalId'
     $joinedRow = @{
-        OE = $rowA.'Department.ExternalId'        
-        Department = $rowB.DisplayName
-        FunctionId = $rowA.'Title.ExternalId'
-        Functions = $rowC.Functie_omschrijving
+        OE           = $rowA.'Department.ExternalId'        
+        Department   = $rowB.DisplayName
+        FunctionId   = $rowA.'Title.ExternalId'
+        Functions    = $rowC.Functie_omschrijving
         NedapTeamIds = $rowA.NedapTeamId
-        NedapTeams = $null
+        NedapTeams   = $null
     }
     $joinedAfasDataset += New-Object -Type PSObject -Property $joinedRow
 }
@@ -159,25 +155,24 @@ $joinedAfasDataset = $joinedAfasDataset | Where-Object Department -ne $null
 $nedapTeams = Get-NedapTeamList  | Select-Object name, id, identificationNo
 
 
-foreach($rowA in $joinedAfasDataset) {
-    $joinedNedapDataset =@()
+foreach ($rowA in $joinedAfasDataset) {
+    $joinedNedapDataset = @()
     $mystring = ''
     $nedapIds = $rowA.NedapTeamIds.Split(',')
-    foreach($id in $nedapIds) {
+    foreach ($id in $nedapIds) {
         $rowB = $nedapTeams | Where-Object Id -eq $id
         $joinedRow = @{
             NedapTeams = $rowB.Name
         }
         $joinedNedapDataset += New-Object -Type PSObject -Property $joinedRow        
     }
-    $mystring = $joinedNedapDataset | ForEach-Object {$_.NedapTeams}
+    $mystring = $joinedNedapDataset | ForEach-Object { $_.NedapTeams }
     $rowA.NedapTeams = $mystring -join ", "
     
 }
 
-ForEach($r in $joinedAfasDataset)
-        {
-            #Write-Output $Site 
-            $returnObject = @{ AFASOEid=$r.OE; AFASOE=$r.Department; FunctionId=$r.FunctionId; Functions=$r.Functions; NedapTeamIds=$r.NedapTeamIds; NedapTeams=$r.NedapTeams; }
-            Write-Output $returnObject                
-        } 
+ForEach ($r in $joinedAfasDataset) {
+    #Write-Output $Site 
+    $returnObject = @{ AFASOEid = $r.OE; AFASOE = $r.Department; FunctionId = $r.FunctionId; Functions = $r.Functions; NedapTeamIds = $r.NedapTeamIds; NedapTeams = $r.NedapTeams; }
+    Write-Output $returnObject                
+} 
