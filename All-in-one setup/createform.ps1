@@ -358,10 +358,12 @@ function Get-NedapTeamList {
         $response = Invoke-WebRequest @webRequestSplatting
         $teams = $response.Content | ConvertFrom-Json
         Write-Output  $teams.teams
-    } catch {
+    }
+    catch {
         if ($_.ErrorDetails) {
             $errorReponse = $_.ErrorDetails
-        } elseif ($_.Exception.Response) {
+        }
+        elseif ($_.Exception.Response) {
             $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
             $errorReponse = $reader.ReadToEnd()
             $reader.Dispose()
@@ -372,11 +374,10 @@ function Get-NedapTeamList {
 Import-NedapCertificate -CertificatePath $script:CertificatePath  -CertificatePassword $script:CertificatePassword
 $teams = Get-NedapTeamList | Where-Object id -in $selectedNedapIds | Select-Object name, id, identificationNo
 
-ForEach($team in $teams)
-        {
-            $returnObject = @{ Id=$team.id; DisplayName=$team.name; identificatonNo=$team.identificationNo }
-            Write-Output $returnObject                
-        }
+ForEach ($team in $teams) {
+    $returnObject = @{ Id = $team.id; DisplayName = $team.name; identificatonNo = $team.identificationNo }
+    Write-Output $returnObject                
+}
 '@ 
 $tmpModel = @'
 [{"key":"DisplayName","type":0},{"key":"Id","type":0},{"key":"identificatonNo","type":0}]
@@ -445,10 +446,12 @@ function Get-NedapTeamList {
         $response = Invoke-WebRequest @webRequestSplatting
         $teams = $response.Content | ConvertFrom-Json
         Write-Output  $teams.teams
-    } catch {
+    }
+    catch {
         if ($_.ErrorDetails) {
             $errorReponse = $_.ErrorDetails
-        } elseif ($_.Exception.Response) {
+        }
+        elseif ($_.Exception.Response) {
             $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
             $errorReponse = $reader.ReadToEnd()
             $reader.Dispose()
@@ -460,11 +463,10 @@ Import-NedapCertificate -CertificatePath $script:CertificatePath  -CertificatePa
 
 $nedapTeams = Get-NedapTeamList  | Select-Object name, id, identificationNo
 
-ForEach($nedapTeam in $nedapTeams)
-        {
-            $returnObject = @{ Id=$nedapTeam.id; DisplayName=$nedapTeam.Name; identificationNo=$nedapTeam.identificationNo; }
-            Write-Output $returnObject                
-        } 
+ForEach ($nedapTeam in $nedapTeams) {
+    $returnObject = @{ Id = $nedapTeam.id; DisplayName = $nedapTeam.Name; identificationNo = $nedapTeam.identificationNo; }
+    Write-Output $returnObject                
+} 
 '@ 
 $tmpModel = @'
 [{"key":"DisplayName","type":0},{"key":"Id","type":0},{"key":"identificationNo","type":0}]
@@ -514,13 +516,13 @@ function Get-AFASConnectorData {
 
         foreach ($record in $dataset.rows) { [void]$data.Value.add($record) }
 
-        $skip += 100
-        while ($dataset.rows.count -ne 0) {
+        $skip += $take
+        while (@($dataset.rows).count -eq $take) {
             $uri = $BaseUri + "/connectors/" + $Connector + "?skip=$skip&take=$take"
 
             $dataset = Invoke-RestMethod -Method Get -Uri $uri -Headers $Headers -UseBasicParsing
 
-            $skip += 100
+            $skip += $take
 
             foreach ($record in $dataset.rows) { [void]$data.Value.add($record) }
         }
@@ -540,19 +542,13 @@ $employments = New-Object System.Collections.ArrayList
 Get-AFASConnectorData -Token $token -BaseUri $baseUri -Connector "T4E_HelloID_Employments" ([ref]$employments)
 $employments = $employments | Select-Object Functie_code, Functie_omschrijving #| Group-Object Persoonsnummer -AsHashTable
 
-if($true -eq $includePositions)
-{
+if ($true -eq $includePositions) {
     $positions = New-Object System.Collections.ArrayList
     Get-AFASConnectorData -Token $token -BaseUri $baseUri -Connector "T4E_HelloID_Positions" ([ref]$positions)
     $positions = $positions | Select-Object Functie_code, Functie_omschrijving #| Group-Object Persoonsnummer -AsHashTable
+
+    $employments += $positions
 }
-
-    if($true -eq $includePositions)
-    {
-        $employments += $positions
-    }
-    
-
 
 $afasEmployments = $employments | Sort-Object Functie_Code -Unique 
 
@@ -609,10 +605,12 @@ function Get-NedapTeamList {
         $response = Invoke-WebRequest @webRequestSplatting
         $teams = $response.Content | ConvertFrom-Json
         Write-Output  $teams.teams
-    } catch {
+    }
+    catch {
         if ($_.ErrorDetails) {
             $errorReponse = $_.ErrorDetails
-        } elseif ($_.Exception.Response) {
+        }
+        elseif ($_.Exception.Response) {
             $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
             $errorReponse = $reader.ReadToEnd()
             $reader.Dispose()
@@ -623,17 +621,17 @@ function Get-NedapTeamList {
 Import-NedapCertificate -CertificatePath $script:CertificatePath  -CertificatePassword $script:CertificatePassword
 
 
-$joinedAfasDataset =@()
-foreach($rowA in $rules) {
+$joinedAfasDataset = @()
+foreach ($rowA in $rules) {
     $rowB = $afasLocations | Where-Object ExternalId -eq $rowA.'Department.ExternalId'
     $rowC = $afasEmployments | Where-Object Functie_code -eq $rowA.'Title.ExternalId'
     $joinedRow = @{
-        OE = $rowA.'Department.ExternalId'        
-        Department = $rowB.DisplayName
-        FunctionId = $rowA.'Title.ExternalId'
-        Functions = $rowC.Functie_omschrijving
+        OE           = $rowA.'Department.ExternalId'        
+        Department   = $rowB.DisplayName
+        FunctionId   = $rowA.'Title.ExternalId'
+        Functions    = $rowC.Functie_omschrijving
         NedapTeamIds = $rowA.NedapTeamId
-        NedapTeams = $null
+        NedapTeams   = $null
     }
     $joinedAfasDataset += New-Object -Type PSObject -Property $joinedRow
 }
@@ -642,28 +640,27 @@ $joinedAfasDataset = $joinedAfasDataset | Where-Object Department -ne $null
 $nedapTeams = Get-NedapTeamList  | Select-Object name, id, identificationNo
 
 
-foreach($rowA in $joinedAfasDataset) {
-    $joinedNedapDataset =@()
+foreach ($rowA in $joinedAfasDataset) {
+    $joinedNedapDataset = @()
     $mystring = ''
     $nedapIds = $rowA.NedapTeamIds.Split(',')
-    foreach($id in $nedapIds) {
+    foreach ($id in $nedapIds) {
         $rowB = $nedapTeams | Where-Object Id -eq $id
         $joinedRow = @{
             NedapTeams = $rowB.Name
         }
         $joinedNedapDataset += New-Object -Type PSObject -Property $joinedRow        
     }
-    $mystring = $joinedNedapDataset | ForEach-Object {$_.NedapTeams}
+    $mystring = $joinedNedapDataset | ForEach-Object { $_.NedapTeams }
     $rowA.NedapTeams = $mystring -join ", "
     
 }
 
-ForEach($r in $joinedAfasDataset)
-        {
-            #Write-Output $Site 
-            $returnObject = @{ AFASOEid=$r.OE; AFASOE=$r.Department; FunctionId=$r.FunctionId; Functions=$r.Functions; NedapTeamIds=$r.NedapTeamIds; NedapTeams=$r.NedapTeams; }
-            Write-Output $returnObject                
-        } 
+ForEach ($r in $joinedAfasDataset) {
+    #Write-Output $Site 
+    $returnObject = @{ AFASOEid = $r.OE; AFASOE = $r.Department; FunctionId = $r.FunctionId; Functions = $r.Functions; NedapTeamIds = $r.NedapTeamIds; NedapTeams = $r.NedapTeams; }
+    Write-Output $returnObject                
+} 
 '@ 
 $tmpModel = @'
 [{"key":"AFASOE","type":0},{"key":"FunctionId","type":0},{"key":"NedapTeamIds","type":0},{"key":"AFASOEid","type":0},{"key":"Functions","type":0},{"key":"NedapTeams","type":0}]
@@ -746,33 +743,31 @@ if($delegatedFormRef.created -eq $true) {
 $Path = $NedapOnsTeamsMappingPath
 
 $CSV = import-csv $Path -Delimiter ";"
-$filteredCSV = foreach($line in $CSV){
-    if(-not(($line.'Department.ExternalId' -eq $organisationalUnit) -and ($line.NedapLocationIds -eq $locationsOriginal) -and ($line.'Title.ExternalId' -eq $jobCode))){
+$filteredCSV = foreach ($line in $CSV) {
+    if (-not(($line.'Department.ExternalId' -eq $organisationalUnit) -and ($line.NedapLocationIds -eq $locationsOriginal) -and ($line.'Title.ExternalId' -eq $jobCode))) {
         $line 
     }
 }
-$filteredCSV | ConvertTo-Csv -NoTypeInformation -Delimiter ";" | % {$_.Replace('"','')} | Out-File $Path
+$filteredCSV | ConvertTo-Csv -NoTypeInformation -Delimiter ";" | ForEach-Object { $_.Replace('"', '') } | Out-File $Path
 
 #Step 2 - add new rule definition
 $afasLocation = $organisationalUnit
 $afasJobCode = $jobCode
 $nedapTeams = $teamsNew | ConvertFrom-Json
 
-foreach($n in $nedapTeams)
-{
+foreach ($n in $nedapTeams) {
     $nedapTeamsString = $nedapTeamsString + $n.Id.ToString() + ","
 }
 
-$nedapTeamsString = $nedapTeamsString.Substring(0,$nedapTeamsString.Length-1)
+$nedapTeamsString = $nedapTeamsString.Substring(0, $nedapTeamsString.Length - 1)
 
 $rule = [PSCustomObject]@{
     "Department.ExternalId" = $afasLocation;
-    "Title.ExternalId" = $afasJobCode
-    "NedapTeamId"= $nedapTeamsString;
+    "Title.ExternalId"      = $afasJobCode
+    "NedapTeamId"           = $nedapTeamsString;
 }
 
-$rule | ConvertTo-Csv -NoTypeInformation -Delimiter ";" | % { $_ -replace '"', ""}  | Select-Object -Skip 1  | Add-Content $Path -Encoding UTF8
-
+$rule | ConvertTo-Csv -NoTypeInformation -Delimiter ";" | ForEach-Object { $_ -replace '"', "" }  | Select-Object -Skip 1  | Add-Content $Path -Encoding UTF8
 '@; 
 
 	$tmpVariables = @'
