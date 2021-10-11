@@ -50,10 +50,12 @@ function Get-NedapTeamList {
         $response = Invoke-WebRequest @webRequestSplatting
         $teams = $response.Content | ConvertFrom-Json
         Write-Output  $teams.teams
-    } catch {
+    }
+    catch {
         if ($_.ErrorDetails) {
             $errorReponse = $_.ErrorDetails
-        } elseif ($_.Exception.Response) {
+        }
+        elseif ($_.Exception.Response) {
             $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
             $errorReponse = $reader.ReadToEnd()
             $reader.Dispose()
@@ -65,8 +67,7 @@ Import-NedapCertificate -CertificatePath $script:CertificatePath  -CertificatePa
 
 $nedapTeams = Get-NedapTeamList  | Select-Object name, id, identificationNo
 
-ForEach($nedapTeam in $nedapTeams)
-        {
-            $returnObject = @{ Id=$nedapTeam.id; DisplayName=$nedapTeam.Name; identificationNo=$nedapTeam.identificationNo; }
-            Write-Output $returnObject                
-        } 
+ForEach ($nedapTeam in $nedapTeams) {
+    $returnObject = @{ Id = $nedapTeam.id; DisplayName = $nedapTeam.Name; identificationNo = $nedapTeam.identificationNo; }
+    Write-Output $returnObject                
+} 
