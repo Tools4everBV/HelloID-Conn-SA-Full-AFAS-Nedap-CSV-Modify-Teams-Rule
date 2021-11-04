@@ -1,11 +1,13 @@
-# Add TLS1.2 support to the script
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityPrototolType]::Tls12
+# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
+
 #HelloID variables
-$script:PortalBaseUrl = "https://CUSTOMER.helloid.com"
+#Note: when running this script inside HelloID; portalUrl and API credentials are provided automatically (generate and save API credentials first in your admin panel!)
+$portalUrl = "https://CUSTOMER.helloid.com"
 $apiKey = "API_KEY"
 $apiSecret = "API_SECRET"
 $delegatedFormAccessGroupNames = @("Users") #Only unique names are supported. Groups must exist!
-$delegatedFormCategories = @("SharePoint") #Only unique names are supported. Categories will be created if not exists
+$delegatedFormCategories = @("Nedap") #Only unique names are supported. Categories will be created if not exists
 $script:debugLogging = $false #Default value: $false. If $true, the HelloID resource GUIDs will be shown in the logging
 $script:duplicateForm = $false #Default value: $false. If $true, the HelloID resource names will be changed to import a duplicate Form
 $script:duplicateFormSuffix = "_tmp" #the suffix will be added to all HelloID resource names to generate a duplicate form with different resource names
@@ -14,12 +16,12 @@ $script:duplicateFormSuffix = "_tmp" #the suffix will be added to all HelloID re
 #NOTE: You can also update the HelloID Global variable values afterwards in the HelloID Admin Portal: https://<CUSTOMER>.helloid.com/admin/variablelibrary
 $globalHelloIDVariables = [System.Collections.Generic.List[object]]@();
 
-#Global variable #1 >> NedapOnsConnectionURL
+#Global variable #1 >> NedapOnsTeamsMappingPath
 $tmpName = @'
-NedapOnsConnectionURL
+NedapOnsTeamsMappingPath
 '@ 
 $tmpValue = @'
-https://api-staging.ons.io
+C:\foldername\OUCode_Teamid.csv
 '@ 
 $globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
 
@@ -39,50 +41,82 @@ C:\foldername\certificate.pfx
 '@ 
 $globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
 
-#Global variable #4 >> NedapOnsTeamsMappingPath
+#Global variable #4 >> NedapOnsConnectionURL
 $tmpName = @'
-NedapOnsTeamsMappingPath
+NedapOnsConnectionURL
 '@ 
 $tmpValue = @'
-C:\foldername\OUCode_Teamid.csv
+https://api-staging.ons.io
 '@ 
 $globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
 
-#Global variable #5 >> AfasBaseUri
+#Global variable #5 >> AFASToken
 $tmpName = @'
-AfasBaseUri
-'@ 
-$tmpValue = @'
-https://<environmentcode>.rest.afas.online/profitrestservices
-'@ 
-$globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
-
-#Global variable #6 >> AfasToken
-$tmpName = @'
-AfasToken
+AFASToken
 '@ 
 $tmpValue = "" 
 $globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "True"});
 
+#Global variable #6 >> AFASBaseUri
+$tmpName = @'
+AFASBaseUri
+'@ 
+$tmpValue = @'
+https://64458.rest.afas.online/ProfitRestServices
+'@ 
+$globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
+
 
 #make sure write-information logging is visual
 $InformationPreference = "continue"
-# Create authorization headers with HelloID API key
-$pair = "$apiKey" + ":" + "$apiSecret"
-$bytes = [System.Text.Encoding]::ASCII.GetBytes($pair)
-$base64 = [System.Convert]::ToBase64String($bytes)
-$key = "Basic $base64"
-$script:headers = @{"authorization" = $Key}
+
+# Check for prefilled API Authorization header
+if (-not [string]::IsNullOrEmpty($portalApiBasic)) {
+    $script:headers = @{"authorization" = $portalApiBasic}
+    Write-Information "Using prefilled API credentials"
+} else {
+    # Create authorization headers with HelloID API key
+    $pair = "$apiKey" + ":" + "$apiSecret"
+    $bytes = [System.Text.Encoding]::ASCII.GetBytes($pair)
+    $base64 = [System.Convert]::ToBase64String($bytes)
+    $key = "Basic $base64"
+    $script:headers = @{"authorization" = $Key}
+    Write-Information "Using manual API credentials"
+}
+
+# Check for prefilled PortalBaseURL
+if (-not [string]::IsNullOrEmpty($portalBaseUrl)) {
+    $script:PortalBaseUrl = $portalBaseUrl
+    Write-Information "Using prefilled PortalURL: $script:PortalBaseUrl"
+} else {
+    $script:PortalBaseUrl = $portalUrl
+    Write-Information "Using manual PortalURL: $script:PortalBaseUrl"
+}
+
 # Define specific endpoint URI
-$script:PortalBaseUrl = $script:PortalBaseUrl.trim("/") + "/"
- 
+$script:PortalBaseUrl = $script:PortalBaseUrl.trim("/") + "/"  
+
+# Make sure to reveive an empty array using PowerShell Core
+function ConvertFrom-Json-WithEmptyArray([string]$jsonString) {
+    # Running in PowerShell Core?
+    if($IsCoreCLR -eq $true){
+        $r = [Object[]]($jsonString | ConvertFrom-Json -NoEnumerate)
+        return ,$r  # Force return value to be an array using a comma
+    } else {
+        $r = [Object[]]($jsonString | ConvertFrom-Json)
+        return ,$r  # Force return value to be an array using a comma
+    }
+}
+
 function Invoke-HelloIDGlobalVariable {
     param(
         [parameter(Mandatory)][String]$Name,
         [parameter(Mandatory)][String][AllowEmptyString()]$Value,
         [parameter(Mandatory)][String]$Secret
     )
+
     $Name = $Name + $(if ($script:duplicateForm -eq $true) { $script:duplicateFormSuffix })
+
     try {
         $uri = ($script:PortalBaseUrl + "api/v1/automation/variables/named/$Name")
         $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false
@@ -100,6 +134,7 @@ function Invoke-HelloIDGlobalVariable {
             $uri = ($script:PortalBaseUrl + "api/v1/automation/variable")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
             $variableGuid = $response.automationVariableGuid
+
             Write-Information "Variable '$Name' created$(if ($script:debugLogging -eq $true) { ": " + $variableGuid })"
         } else {
             $variableGuid = $response.automationVariableGuid
@@ -109,6 +144,7 @@ function Invoke-HelloIDGlobalVariable {
         Write-Error "Variable '$Name', message: $_"
     }
 }
+
 function Invoke-HelloIDAutomationTask {
     param(
         [parameter(Mandatory)][String]$TaskName,
@@ -122,6 +158,7 @@ function Invoke-HelloIDAutomationTask {
     )
     
     $TaskName = $TaskName + $(if ($script:duplicateForm -eq $true) { $script:duplicateFormSuffix })
+
     try {
         $uri = ($script:PortalBaseUrl +"api/v1/automationtasks?search=$TaskName&container=$AutomationContainer")
         $responseRaw = (Invoke-RestMethod -Method Get -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false) 
@@ -129,19 +166,21 @@ function Invoke-HelloIDAutomationTask {
     
         if([string]::IsNullOrEmpty($response.automationTaskGuid) -or $ForceCreateTask -eq $true) {
             #Create Task
+
             $body = @{
                 name                = $TaskName;
                 useTemplate         = $UseTemplate;
                 powerShellScript    = $PowershellScript;
                 automationContainer = $AutomationContainer;
                 objectGuid          = $ObjectGuid;
-                variables           = [Object[]]($Variables | ConvertFrom-Json);
+                variables           = (ConvertFrom-Json-WithEmptyArray($Variables));
             }
             $body = ConvertTo-Json -InputObject $body
     
             $uri = ($script:PortalBaseUrl +"api/v1/automationtasks/powershell")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
             $taskGuid = $response.automationTaskGuid
+
             Write-Information "Powershell task '$TaskName' created$(if ($script:debugLogging -eq $true) { ": " + $taskGuid })"
         } else {
             #Get TaskGUID
@@ -151,8 +190,10 @@ function Invoke-HelloIDAutomationTask {
     } catch {
         Write-Error "Powershell task '$TaskName', message: $_"
     }
+
     $returnObject.Value = $taskGuid
 }
+
 function Invoke-HelloIDDatasource {
     param(
         [parameter(Mandatory)][String]$DatasourceName,
@@ -164,7 +205,9 @@ function Invoke-HelloIDDatasource {
         [parameter()][String][AllowEmptyString()]$AutomationTaskGuid,
         [parameter(Mandatory)][Ref]$returnObject
     )
+
     $DatasourceName = $DatasourceName + $(if ($script:duplicateForm -eq $true) { $script:duplicateFormSuffix })
+
     $datasourceTypeName = switch($DatasourceType) { 
         "1" { "Native data source"; break} 
         "2" { "Static data source"; break} 
@@ -181,11 +224,11 @@ function Invoke-HelloIDDatasource {
             $body = @{
                 name               = $DatasourceName;
                 type               = $DatasourceType;
-                model              = [Object[]]($DatasourceModel | ConvertFrom-Json);
+                model              = (ConvertFrom-Json-WithEmptyArray($DatasourceModel));
                 automationTaskGUID = $AutomationTaskGuid;
-                value              = [Object[]]($DatasourceStaticValue | ConvertFrom-Json);
+                value              = (ConvertFrom-Json-WithEmptyArray($DatasourceStaticValue));
                 script             = $DatasourcePsScript;
-                input              = [Object[]]($DatasourceInput | ConvertFrom-Json);
+                input              = (ConvertFrom-Json-WithEmptyArray($DatasourceInput));
             }
             $body = ConvertTo-Json -InputObject $body
       
@@ -202,8 +245,10 @@ function Invoke-HelloIDDatasource {
     } catch {
       Write-Error "$datasourceTypeName '$DatasourceName', message: $_"
     }
+
     $returnObject.Value = $datasourceGuid
 }
+
 function Invoke-HelloIDDynamicForm {
     param(
         [parameter(Mandatory)][String]$FormName,
@@ -212,6 +257,7 @@ function Invoke-HelloIDDynamicForm {
     )
     
     $FormName = $FormName + $(if ($script:duplicateForm -eq $true) { $script:duplicateFormSuffix })
+
     try {
         try {
             $uri = ($script:PortalBaseUrl +"api/v1/forms/$FormName")
@@ -224,7 +270,7 @@ function Invoke-HelloIDDynamicForm {
             #Create Dynamic form
             $body = @{
                 Name       = $FormName;
-                FormSchema = [Object[]]($FormSchema | ConvertFrom-Json)
+                FormSchema = (ConvertFrom-Json-WithEmptyArray($FormSchema));
             }
             $body = ConvertTo-Json -InputObject $body -Depth 100
     
@@ -240,8 +286,11 @@ function Invoke-HelloIDDynamicForm {
     } catch {
         Write-Error "Dynamic form '$FormName', message: $_"
     }
+
     $returnObject.Value = $formGuid
 }
+
+
 function Invoke-HelloIDDelegatedForm {
     param(
         [parameter(Mandatory)][String]$DelegatedFormName,
@@ -254,6 +303,7 @@ function Invoke-HelloIDDelegatedForm {
     )
     $delegatedFormCreated = $false
     $DelegatedFormName = $DelegatedFormName + $(if ($script:duplicateForm -eq $true) { $script:duplicateFormSuffix })
+
     try {
         try {
             $uri = ($script:PortalBaseUrl +"api/v1/delegatedforms/$DelegatedFormName")
@@ -268,7 +318,7 @@ function Invoke-HelloIDDelegatedForm {
                 name            = $DelegatedFormName;
                 dynamicFormGUID = $DynamicFormGuid;
                 isEnabled       = "True";
-                accessGroups    = [Object[]]($AccessGroups | ConvertFrom-Json);
+                accessGroups    = (ConvertFrom-Json-WithEmptyArray($AccessGroups));
                 useFaIcon       = $UseFaIcon;
                 faIcon          = $FaIcon;
             }    
@@ -280,6 +330,7 @@ function Invoke-HelloIDDelegatedForm {
             $delegatedFormGuid = $response.delegatedFormGUID
             Write-Information "Delegated form '$DelegatedFormName' created$(if ($script:debugLogging -eq $true) { ": " + $delegatedFormGuid })"
             $delegatedFormCreated = $true
+
             $bodyCategories = $Categories
             $uri = ($script:PortalBaseUrl +"api/v1/delegatedforms/$delegatedFormGuid/categories")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $bodyCategories
@@ -292,9 +343,11 @@ function Invoke-HelloIDDelegatedForm {
     } catch {
         Write-Error "Delegated form '$DelegatedFormName', message: $_"
     }
+
     $returnObject.value.guid = $delegatedFormGuid
     $returnObject.value.created = $delegatedFormCreated
-}<# Begin: HelloID Global Variables #>
+}
+<# Begin: HelloID Global Variables #>
 foreach ($item in $globalHelloIDVariables) {
 	Invoke-HelloIDGlobalVariable -Name $item.name -Value $item.value -Secret $item.secret 
 }
@@ -358,10 +411,12 @@ function Get-NedapTeamList {
         $response = Invoke-WebRequest @webRequestSplatting
         $teams = $response.Content | ConvertFrom-Json
         Write-Output  $teams.teams
-    } catch {
+    }
+    catch {
         if ($_.ErrorDetails) {
             $errorReponse = $_.ErrorDetails
-        } elseif ($_.Exception.Response) {
+        }
+        elseif ($_.Exception.Response) {
             $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
             $errorReponse = $reader.ReadToEnd()
             $reader.Dispose()
@@ -372,11 +427,10 @@ function Get-NedapTeamList {
 Import-NedapCertificate -CertificatePath $script:CertificatePath  -CertificatePassword $script:CertificatePassword
 $teams = Get-NedapTeamList | Where-Object id -in $selectedNedapIds | Select-Object name, id, identificationNo
 
-ForEach($team in $teams)
-        {
-            $returnObject = @{ Id=$team.id; DisplayName=$team.name; identificatonNo=$team.identificationNo }
-            Write-Output $returnObject                
-        }
+ForEach ($team in $teams) {
+    $returnObject = @{ Id = $team.id; DisplayName = $team.name; identificatonNo = $team.identificationNo }
+    Write-Output $returnObject                
+}
 '@ 
 $tmpModel = @'
 [{"key":"DisplayName","type":0},{"key":"Id","type":0},{"key":"identificatonNo","type":0}]
@@ -445,10 +499,12 @@ function Get-NedapTeamList {
         $response = Invoke-WebRequest @webRequestSplatting
         $teams = $response.Content | ConvertFrom-Json
         Write-Output  $teams.teams
-    } catch {
+    }
+    catch {
         if ($_.ErrorDetails) {
             $errorReponse = $_.ErrorDetails
-        } elseif ($_.Exception.Response) {
+        }
+        elseif ($_.Exception.Response) {
             $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
             $errorReponse = $reader.ReadToEnd()
             $reader.Dispose()
@@ -460,11 +516,10 @@ Import-NedapCertificate -CertificatePath $script:CertificatePath  -CertificatePa
 
 $nedapTeams = Get-NedapTeamList  | Select-Object name, id, identificationNo
 
-ForEach($nedapTeam in $nedapTeams)
-        {
-            $returnObject = @{ Id=$nedapTeam.id; DisplayName=$nedapTeam.Name; identificationNo=$nedapTeam.identificationNo; }
-            Write-Output $returnObject                
-        } 
+ForEach ($nedapTeam in $nedapTeams) {
+    $returnObject = @{ Id = $nedapTeam.id; DisplayName = $nedapTeam.Name; identificationNo = $nedapTeam.identificationNo; }
+    Write-Output $returnObject                
+} 
 '@ 
 $tmpModel = @'
 [{"key":"DisplayName","type":0},{"key":"Id","type":0},{"key":"identificationNo","type":0}]
@@ -514,13 +569,13 @@ function Get-AFASConnectorData {
 
         foreach ($record in $dataset.rows) { [void]$data.Value.add($record) }
 
-        $skip += 100
-        while ($dataset.rows.count -ne 0) {
+        $skip += $take
+        while (@($dataset.rows).count -eq $take) {
             $uri = $BaseUri + "/connectors/" + $Connector + "?skip=$skip&take=$take"
 
             $dataset = Invoke-RestMethod -Method Get -Uri $uri -Headers $Headers -UseBasicParsing
 
-            $skip += 100
+            $skip += $take
 
             foreach ($record in $dataset.rows) { [void]$data.Value.add($record) }
         }
@@ -540,19 +595,13 @@ $employments = New-Object System.Collections.ArrayList
 Get-AFASConnectorData -Token $token -BaseUri $baseUri -Connector "T4E_HelloID_Employments" ([ref]$employments)
 $employments = $employments | Select-Object Functie_code, Functie_omschrijving #| Group-Object Persoonsnummer -AsHashTable
 
-if($true -eq $includePositions)
-{
+if ($true -eq $includePositions) {
     $positions = New-Object System.Collections.ArrayList
     Get-AFASConnectorData -Token $token -BaseUri $baseUri -Connector "T4E_HelloID_Positions" ([ref]$positions)
     $positions = $positions | Select-Object Functie_code, Functie_omschrijving #| Group-Object Persoonsnummer -AsHashTable
+
+    $employments += $positions
 }
-
-    if($true -eq $includePositions)
-    {
-        $employments += $positions
-    }
-    
-
 
 $afasEmployments = $employments | Sort-Object Functie_Code -Unique 
 
@@ -609,10 +658,12 @@ function Get-NedapTeamList {
         $response = Invoke-WebRequest @webRequestSplatting
         $teams = $response.Content | ConvertFrom-Json
         Write-Output  $teams.teams
-    } catch {
+    }
+    catch {
         if ($_.ErrorDetails) {
             $errorReponse = $_.ErrorDetails
-        } elseif ($_.Exception.Response) {
+        }
+        elseif ($_.Exception.Response) {
             $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
             $errorReponse = $reader.ReadToEnd()
             $reader.Dispose()
@@ -623,17 +674,17 @@ function Get-NedapTeamList {
 Import-NedapCertificate -CertificatePath $script:CertificatePath  -CertificatePassword $script:CertificatePassword
 
 
-$joinedAfasDataset =@()
-foreach($rowA in $rules) {
+$joinedAfasDataset = @()
+foreach ($rowA in $rules) {
     $rowB = $afasLocations | Where-Object ExternalId -eq $rowA.'Department.ExternalId'
     $rowC = $afasEmployments | Where-Object Functie_code -eq $rowA.'Title.ExternalId'
     $joinedRow = @{
-        OE = $rowA.'Department.ExternalId'        
-        Department = $rowB.DisplayName
-        FunctionId = $rowA.'Title.ExternalId'
-        Functions = $rowC.Functie_omschrijving
+        OE           = $rowA.'Department.ExternalId'        
+        Department   = $rowB.DisplayName
+        FunctionId   = $rowA.'Title.ExternalId'
+        Functions    = $rowC.Functie_omschrijving
         NedapTeamIds = $rowA.NedapTeamId
-        NedapTeams = $null
+        NedapTeams   = $null
     }
     $joinedAfasDataset += New-Object -Type PSObject -Property $joinedRow
 }
@@ -642,28 +693,27 @@ $joinedAfasDataset = $joinedAfasDataset | Where-Object Department -ne $null
 $nedapTeams = Get-NedapTeamList  | Select-Object name, id, identificationNo
 
 
-foreach($rowA in $joinedAfasDataset) {
-    $joinedNedapDataset =@()
+foreach ($rowA in $joinedAfasDataset) {
+    $joinedNedapDataset = @()
     $mystring = ''
     $nedapIds = $rowA.NedapTeamIds.Split(',')
-    foreach($id in $nedapIds) {
+    foreach ($id in $nedapIds) {
         $rowB = $nedapTeams | Where-Object Id -eq $id
         $joinedRow = @{
             NedapTeams = $rowB.Name
         }
         $joinedNedapDataset += New-Object -Type PSObject -Property $joinedRow        
     }
-    $mystring = $joinedNedapDataset | ForEach-Object {$_.NedapTeams}
+    $mystring = $joinedNedapDataset | ForEach-Object { $_.NedapTeams }
     $rowA.NedapTeams = $mystring -join ", "
     
 }
 
-ForEach($r in $joinedAfasDataset)
-        {
-            #Write-Output $Site 
-            $returnObject = @{ AFASOEid=$r.OE; AFASOE=$r.Department; FunctionId=$r.FunctionId; Functions=$r.Functions; NedapTeamIds=$r.NedapTeamIds; NedapTeams=$r.NedapTeams; }
-            Write-Output $returnObject                
-        } 
+ForEach ($r in $joinedAfasDataset) {
+    #Write-Output $Site 
+    $returnObject = @{ AFASOEid = $r.OE; AFASOE = $r.Department; FunctionId = $r.FunctionId; Functions = $r.Functions; NedapTeamIds = $r.NedapTeamIds; NedapTeams = $r.NedapTeams; }
+    Write-Output $returnObject                
+} 
 '@ 
 $tmpModel = @'
 [{"key":"AFASOE","type":0},{"key":"FunctionId","type":0},{"key":"NedapTeamIds","type":0},{"key":"AFASOEid","type":0},{"key":"Functions","type":0},{"key":"NedapTeams","type":0}]
@@ -706,6 +756,7 @@ foreach($group in $delegatedFormAccessGroupNames) {
     }
 }
 $delegatedFormAccessGroupGuids = ($delegatedFormAccessGroupGuids | Select-Object -Unique | ConvertTo-Json -Compress)
+
 $delegatedFormCategoryGuids = @()
 foreach($category in $delegatedFormCategories) {
     try {
@@ -721,10 +772,12 @@ foreach($category in $delegatedFormCategories) {
             name = @{"en" = $category};
         }
         $body = ConvertTo-Json -InputObject $body
+
         $uri = ($script:PortalBaseUrl +"api/v1/delegatedformcategories")
         $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
         $tmpGuid = $response.delegatedFormCategoryGuid
         $delegatedFormCategoryGuids += $tmpGuid
+
         Write-Information "HelloID Delegated Form category '$category' successfully created$(if ($script:debugLogging -eq $true) { ": " + $tmpGuid })"
     }
 }
@@ -746,33 +799,31 @@ if($delegatedFormRef.created -eq $true) {
 $Path = $NedapOnsTeamsMappingPath
 
 $CSV = import-csv $Path -Delimiter ";"
-$filteredCSV = foreach($line in $CSV){
-    if(-not(($line.'Department.ExternalId' -eq $organisationalUnit) -and ($line.NedapLocationIds -eq $locationsOriginal) -and ($line.'Title.ExternalId' -eq $jobCode))){
+$filteredCSV = foreach ($line in $CSV) {
+    if (-not(($line.'Department.ExternalId' -eq $organisationalUnit) -and ($line.NedapLocationIds -eq $locationsOriginal) -and ($line.'Title.ExternalId' -eq $jobCode))) {
         $line 
     }
 }
-$filteredCSV | ConvertTo-Csv -NoTypeInformation -Delimiter ";" | % {$_.Replace('"','')} | Out-File $Path
+$filteredCSV | ConvertTo-Csv -NoTypeInformation -Delimiter ";" | ForEach-Object { $_.Replace('"', '') } | Out-File $Path
 
 #Step 2 - add new rule definition
 $afasLocation = $organisationalUnit
 $afasJobCode = $jobCode
 $nedapTeams = $teamsNew | ConvertFrom-Json
 
-foreach($n in $nedapTeams)
-{
+foreach ($n in $nedapTeams) {
     $nedapTeamsString = $nedapTeamsString + $n.Id.ToString() + ","
 }
 
-$nedapTeamsString = $nedapTeamsString.Substring(0,$nedapTeamsString.Length-1)
+$nedapTeamsString = $nedapTeamsString.Substring(0, $nedapTeamsString.Length - 1)
 
 $rule = [PSCustomObject]@{
     "Department.ExternalId" = $afasLocation;
-    "Title.ExternalId" = $afasJobCode
-    "NedapTeamId"= $nedapTeamsString;
+    "Title.ExternalId"      = $afasJobCode
+    "NedapTeamId"           = $nedapTeamsString;
 }
 
-$rule | ConvertTo-Csv -NoTypeInformation -Delimiter ";" | % { $_ -replace '"', ""}  | Select-Object -Skip 1  | Add-Content $Path -Encoding UTF8
-
+$rule | ConvertTo-Csv -NoTypeInformation -Delimiter ";" | ForEach-Object { $_ -replace '"', "" }  | Select-Object -Skip 1  | Add-Content $Path -Encoding UTF8
 '@; 
 
 	$tmpVariables = @'
