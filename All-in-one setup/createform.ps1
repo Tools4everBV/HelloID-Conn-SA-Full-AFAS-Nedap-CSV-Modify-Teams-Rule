@@ -129,7 +129,7 @@ function Invoke-HelloIDGlobalVariable {
                 secret   = $Secret;
                 ItemType = 0;
             }    
-            $body = ConvertTo-Json -InputObject $body
+            $body = ConvertTo-Json -InputObject $body -Depth 100
     
             $uri = ($script:PortalBaseUrl + "api/v1/automation/variable")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
@@ -175,7 +175,7 @@ function Invoke-HelloIDAutomationTask {
                 objectGuid          = $ObjectGuid;
                 variables           = (ConvertFrom-Json-WithEmptyArray($Variables));
             }
-            $body = ConvertTo-Json -InputObject $body
+            $body = ConvertTo-Json -InputObject $body -Depth 100
     
             $uri = ($script:PortalBaseUrl +"api/v1/automationtasks/powershell")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
@@ -230,7 +230,7 @@ function Invoke-HelloIDDatasource {
                 script             = $DatasourcePsScript;
                 input              = (ConvertFrom-Json-WithEmptyArray($DatasourceInput));
             }
-            $body = ConvertTo-Json -InputObject $body
+            $body = ConvertTo-Json -InputObject $body -Depth 100
       
             $uri = ($script:PortalBaseUrl +"api/v1/datasource")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
@@ -295,10 +295,11 @@ function Invoke-HelloIDDelegatedForm {
     param(
         [parameter(Mandatory)][String]$DelegatedFormName,
         [parameter(Mandatory)][String]$DynamicFormGuid,
-        [parameter()][String][AllowEmptyString()]$AccessGroups,
+        [parameter()][Array][AllowEmptyString()]$AccessGroups,
         [parameter()][String][AllowEmptyString()]$Categories,
         [parameter(Mandatory)][String]$UseFaIcon,
         [parameter()][String][AllowEmptyString()]$FaIcon,
+        [parameter()][String][AllowEmptyString()]$task,
         [parameter(Mandatory)][Ref]$returnObject
     )
     $delegatedFormCreated = $false
@@ -318,11 +319,16 @@ function Invoke-HelloIDDelegatedForm {
                 name            = $DelegatedFormName;
                 dynamicFormGUID = $DynamicFormGuid;
                 isEnabled       = "True";
-                accessGroups    = (ConvertFrom-Json-WithEmptyArray($AccessGroups));
                 useFaIcon       = $UseFaIcon;
                 faIcon          = $FaIcon;
-            }    
-            $body = ConvertTo-Json -InputObject $body
+                task            = ConvertFrom-Json -inputObject $task;
+            }
+            if(-not[String]::IsNullOrEmpty($AccessGroups)) { 
+                $body += @{
+                    accessGroups    = (ConvertFrom-Json-WithEmptyArray($AccessGroups));
+                }
+            }
+            $body = ConvertTo-Json -InputObject $body -Depth 100
     
             $uri = ($script:PortalBaseUrl +"api/v1/delegatedforms")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
@@ -347,6 +353,8 @@ function Invoke-HelloIDDelegatedForm {
     $returnObject.value.guid = $delegatedFormGuid
     $returnObject.value.created = $delegatedFormCreated
 }
+
+
 <# Begin: HelloID Global Variables #>
 foreach ($item in $globalHelloIDVariables) {
 	Invoke-HelloIDGlobalVariable -Name $item.name -Value $item.value -Secret $item.secret 
@@ -743,19 +751,23 @@ Invoke-HelloIDDynamicForm -FormName $dynamicFormName -FormSchema $tmpSchema  -re
 
 <# Begin: Delegated Form Access Groups and Categories #>
 $delegatedFormAccessGroupGuids = @()
-foreach($group in $delegatedFormAccessGroupNames) {
-    try {
-        $uri = ($script:PortalBaseUrl +"api/v1/groups/$group")
-        $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false
-        $delegatedFormAccessGroupGuid = $response.groupGuid
-        $delegatedFormAccessGroupGuids += $delegatedFormAccessGroupGuid
-        
-        Write-Information "HelloID (access)group '$group' successfully found$(if ($script:debugLogging -eq $true) { ": " + $delegatedFormAccessGroupGuid })"
-    } catch {
-        Write-Error "HelloID (access)group '$group', message: $_"
+if(-not[String]::IsNullOrEmpty($delegatedFormAccessGroupNames)){
+    foreach($group in $delegatedFormAccessGroupNames) {
+        try {
+            $uri = ($script:PortalBaseUrl +"api/v1/groups/$group")
+            $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false
+            $delegatedFormAccessGroupGuid = $response.groupGuid
+            $delegatedFormAccessGroupGuids += $delegatedFormAccessGroupGuid
+            
+            Write-Information "HelloID (access)group '$group' successfully found$(if ($script:debugLogging -eq $true) { ": " + $delegatedFormAccessGroupGuid })"
+        } catch {
+            Write-Error "HelloID (access)group '$group', message: $_"
+        }
+    }
+    if($null -ne $delegatedFormAccessGroupGuids){
+        $delegatedFormAccessGroupGuids = ($delegatedFormAccessGroupGuids | Select-Object -Unique | ConvertTo-Json -Depth 100 -Compress)
     }
 }
-$delegatedFormAccessGroupGuids = ($delegatedFormAccessGroupGuids | Select-Object -Unique | ConvertTo-Json -Compress)
 
 $delegatedFormCategoryGuids = @()
 foreach($category in $delegatedFormCategories) {
@@ -771,7 +783,7 @@ foreach($category in $delegatedFormCategories) {
         $body = @{
             name = @{"en" = $category};
         }
-        $body = ConvertTo-Json -InputObject $body
+        $body = ConvertTo-Json -InputObject $body -Depth 100
 
         $uri = ($script:PortalBaseUrl +"api/v1/delegatedformcategories")
         $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
@@ -781,7 +793,7 @@ foreach($category in $delegatedFormCategories) {
         Write-Information "HelloID Delegated Form category '$category' successfully created$(if ($script:debugLogging -eq $true) { ": " + $tmpGuid })"
     }
 }
-$delegatedFormCategoryGuids = (ConvertTo-Json -InputObject $delegatedFormCategoryGuids -Compress)
+$delegatedFormCategoryGuids = (ConvertTo-Json -InputObject $delegatedFormCategoryGuids -Depth 100 -Compress)
 <# End: Delegated Form Access Groups and Categories #>
 
 <# Begin: Delegated Form #>
@@ -789,53 +801,10 @@ $delegatedFormRef = [PSCustomObject]@{guid = $null; created = $null}
 $delegatedFormName = @'
 Nedap - CSV - Modify Teams Rule
 '@
-Invoke-HelloIDDelegatedForm -DelegatedFormName $delegatedFormName -DynamicFormGuid $dynamicFormGuid -AccessGroups $delegatedFormAccessGroupGuids -Categories $delegatedFormCategoryGuids -UseFaIcon "True" -FaIcon "fa fa-pencil-square-o" -returnObject ([Ref]$delegatedFormRef) 
-<# End: Delegated Form #>
-
-<# Begin: Delegated Form Task #>
-if($delegatedFormRef.created -eq $true) { 
-	$tmpScript = @'
-#Step 1 - delete rule
-$Path = $NedapOnsTeamsMappingPath
-
-$CSV = import-csv $Path -Delimiter ";"
-$filteredCSV = foreach ($line in $CSV) {
-    if (-not(($line.'Department.ExternalId' -eq $organisationalUnit) -and ($line.NedapLocationIds -eq $locationsOriginal) -and ($line.'Title.ExternalId' -eq $jobCode))) {
-        $line 
-    }
-}
-$filteredCSV | ConvertTo-Csv -NoTypeInformation -Delimiter ";" | ForEach-Object { $_.Replace('"', '') } | Out-File $Path
-
-#Step 2 - add new rule definition
-$afasLocation = $organisationalUnit
-$afasJobCode = $jobCode
-$nedapTeams = $teamsNew | ConvertFrom-Json
-
-foreach ($n in $nedapTeams) {
-    $nedapTeamsString = $nedapTeamsString + $n.Id.ToString() + ","
-}
-
-$nedapTeamsString = $nedapTeamsString.Substring(0, $nedapTeamsString.Length - 1)
-
-$rule = [PSCustomObject]@{
-    "Department.ExternalId" = $afasLocation;
-    "Title.ExternalId"      = $afasJobCode
-    "NedapTeamId"           = $nedapTeamsString;
-}
-
-$rule | ConvertTo-Csv -NoTypeInformation -Delimiter ";" | ForEach-Object { $_ -replace '"', "" }  | Select-Object -Skip 1  | Add-Content $Path -Encoding UTF8
-'@; 
-
-	$tmpVariables = @'
-[{"name":"jobCode","value":"{{form.teamsMappings.FunctionId}}","secret":false,"typeConstraint":"string"},{"name":"organisationalUnit","value":"{{form.teamsMappings.AFASOEid}}","secret":false,"typeConstraint":"string"},{"name":"teamsNew","value":"{{form.dualList.right.toJsonString}}","secret":false,"typeConstraint":"string"},{"name":"teamsOriginal","value":"{{form.teamsMappings.NedapTeamIds}}","secret":false,"typeConstraint":"string"}]
+$tmpTask = @'
+{"name":"Nedap - CSV - Modify Teams Rule","script":"$jobCode = $form.teamsMappings.FunctionId\r\n$organisationalUnit = $form.teamsMappings.AFASOEid\r\n$teamsNew = $form.dualList.right.toJsonString\r\n$teamsOriginal = $form.teamsMappings.NedapTeamIds\r\n\r\n#Step 1 - delete rule\r\n$path = $NedapOnsTeamsMappingPath\r\n\r\n$CSV = import-csv $Path -Delimiter \";\"\r\n$filteredCSV = foreach ($line in $CSV) {\r\n    if (-not(($line.\u0027Department.ExternalId\u0027 -eq $organisationalUnit) -and ($line.NedapLocationIds -eq $locationsOriginal) -and ($line.\u0027Title.ExternalId\u0027 -eq $jobCode))) {\r\n        $line \r\n    }\r\n}\r\n$filteredCSV | ConvertTo-Csv -NoTypeInformation -Delimiter \";\" | ForEach-Object { $_.Replace(\u0027\"\u0027, \u0027\u0027) } | Out-File $path\r\n\r\n#Step 2 - add new rule definition\r\n$afasLocation = $organisationalUnit\r\n$afasJobCode = $jobCode\r\n$nedapTeams = $teamsNew | ConvertFrom-Json\r\n\r\nforeach ($n in $nedapTeams) {\r\n    $nedapTeamsString = $nedapTeamsString + $n.Id.ToString() + \",\"\r\n}\r\n\r\n$nedapTeamsString = $nedapTeamsString.Substring(0, $nedapTeamsString.Length - 1)\r\n\r\n$rule = [PSCustomObject]@{\r\n    \"Department.ExternalId\" = $afasLocation;\r\n    \"Title.ExternalId\"      = $afasJobCode\r\n    \"NedapTeamId\"           = $nedapTeamsString;\r\n}\r\n\r\n$rule | ConvertTo-Csv -NoTypeInformation -Delimiter \";\" | ForEach-Object { $_ -replace \u0027\"\u0027, \"\" }  | Select-Object -Skip 1  | Add-Content $path -Encoding UTF8\r\n\r\n$Log = @{\r\n    Action            = \"Undefined\" # optional. ENUM (undefined = default) \r\n    System            = \"NedapOns\" # optional (free format text) \r\n    Message           = \"Updated team rule for department [$organisationalUnit] and optional title [$jobCode] from Nedap Team id(s) [$teamsOriginal] to Nedap Team id(s) [$teamsNew] in mapping file [$path]\" # required (free format text) \r\n    IsError           = $false # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) \r\n    TargetDisplayName = \"$path\" # optional (free format text) \r\n    TargetIdentifier  = \"\" # optional (free format text) \r\n}\r\n#send result back  \r\nWrite-Information -Tags \"Audit\" -MessageData $log","runInCloud":false}
 '@ 
 
-	$delegatedFormTaskGuid = [PSCustomObject]@{} 
-$delegatedFormTaskName = @'
-Nedap-ons-modify-teams-rule
-'@
-	Invoke-HelloIDAutomationTask -TaskName $delegatedFormTaskName -UseTemplate "False" -AutomationContainer "8" -Variables $tmpVariables -PowershellScript $tmpScript -ObjectGuid $delegatedFormRef.guid -ForceCreateTask $true -returnObject ([Ref]$delegatedFormTaskGuid) 
-} else {
-	Write-Warning "Delegated form '$delegatedFormName' already exists. Nothing to do with the Delegated Form task..." 
-}
-<# End: Delegated Form Task #>
+Invoke-HelloIDDelegatedForm -DelegatedFormName $delegatedFormName -DynamicFormGuid $dynamicFormGuid -AccessGroups $delegatedFormAccessGroupGuids -Categories $delegatedFormCategoryGuids -UseFaIcon "True" -FaIcon "fa fa-pencil-square-o" -task $tmpTask -returnObject ([Ref]$delegatedFormRef) 
+<# End: Delegated Form #>
+
